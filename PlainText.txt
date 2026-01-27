@@ -1,0 +1,7 @@
+first-mcp/
+├── README.md          # 项目说明文档
+├── index.js           # 主服务器实现
+├── package.json       # 项目配置和依赖
+└── package-lock.json  # 依赖版本锁定文件
+
+
