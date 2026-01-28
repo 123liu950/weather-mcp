@@ -1,21 +1,44 @@
 {
-  "name": "first-mcp",
+  "name": "grande-weather-mcp-server",
   "version": "1.0.0",
-  "description": "A Model Context Protocol server implementation",
+  "description": "MCP Server for OpenWeather API - supports both SSE and STDIO modes / 天气 MCP 服务器",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start:sse": "node index.js sse",
+    "start:stdio": "node index.js stdio",
+    "test": "echo \"No tests yet\" && exit 0",
+    "prepublishOnly": "echo 'Ready to publish!'"
   },
   "keywords": [
     "mcp",
     "model-context-protocol",
     "ai",
+    "weather",
+    "openweather",
     "context",
     "server"
   ],
-  "author": "",
+  "author": "511456916@qq.com",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/123liu950/weather-mcp"
+  },
+  "homepage": "https://github.com/123liu950/weather-mcp/blob/main/README.md",
+  "bugs": {
+    "url": "https://github.com/123liu950/weather-mcp/issues"
+  },
+  "bin": {
+    "weather-mcp": "./bin/cli.js",
+    "weather-mcp-server": "./bin/cli.js"
+  },
+  "files": [
+    "index.js",
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3",
     "axios": "^1.13.3",

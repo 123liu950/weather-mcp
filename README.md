@@ -1,69 +1,202 @@
-# Weather MCP Server
+# Weather MCP Server 🌤️
 
-这是一个基于 Model Context Protocol (MCP) 的天气查询服务器实现，使用 OpenWeatherMap API 提供实时天气信息。
+A Model Context Protocol (MCP) server that provides weather data from OpenWeather API. Supports both **STDIO** and **SSE** transport modes.
 
-## 功能
+[English](#english) | [中文](#中文)
 
-这个 MCP 服务器提供了以下功能：
+---
 
-- **获取天气工具**: 查询指定城市的当前实时天气信息
+## English
 
-## 安装
+### Features
 
-首先，确保您已安装 Node.js (v14 或更高版本)。
+- 🌡️ **Real-time Weather** - Get current weather for any city
+- 📅 **5-Day Forecast** - Get weather forecast up to 5 days
+- 🌍 **Bilingual Support** - Works with English and Chinese city names
+- 🔌 **Dual Transport** - Supports both STDIO and SSE modes
+- 🔑 **Flexible Auth** - API key via URL, Header, or environment variable
 
-安装依赖：
+### Installation
+
+#### Option 1: NPX (Recommended for STDIO)
+
+No installation needed! Just configure your MCP client:
+
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "command": "npx",
+      "args": ["-y", "weather-mcp-server"],
+      "env": {
+        "OPENWEATHER_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+#### Option 2: Global Install
 
 ```bash
+npm install -g weather-mcp-server
+```
+
+Then configure:
+
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "command": "weather-mcp",
+      "env": {
+        "OPENWEATHER_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+#### Option 3: SSE Mode (Remote Server)
+
+If deployed to a server (e.g., Render, Railway):
+
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "transport": "sse",
+      "url": "https://your-server.com/sse?key=your_api_key"
+    }
+  }
+}
+```
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `get-weather` | Get real-time weather for a city |
+| `get-forecast` | Get 5-day weather forecast |
+
+### Examples
+
+Ask your AI assistant:
+
+- "What's the weather in Tokyo?"
+- "Get me the 5-day forecast for New York"
+- "北京今天天气怎么样？"
+- "上海未来三天天气预报"
+
+### Self-Hosting (SSE Mode)
+
+```bash
+# Clone the repo
+git clone https://github.com/your-username/weather-mcp-server
+cd weather-mcp-server
 npm install
+
+# Start SSE server
+npm run start:sse
+
+# Or with custom port
+PORT=8080 npm run start:sse
 ```
 
-## 配置
+### API Key
 
-在使用之前，您需要配置 OpenWeatherMap API 密钥：
+Get your free API key from [OpenWeather](https://openweathermap.org/api).
 
-1. 访问 [OpenWeatherMap](https://openweathermap.org/api) 注册账号并获取 API 密钥
-2. 在 Trae 的配置面板中设置环境变量 `OPENWEATHER_API_KEY`，值为您的 API 密钥
-3. 如果未设置环境变量，将使用默认的 API 密钥（可能不可用）
+---
 
-## 运行
+## 中文
 
-启动服务器：
+### 功能特点
+
+- 🌡️ **实时天气** - 获取任意城市的当前天气
+- 📅 **5天预报** - 获取最多5天的天气预报
+- 🌍 **双语支持** - 支持中英文城市名
+- 🔌 **双传输模式** - 同时支持 STDIO 和 SSE 模式
+- 🔑 **灵活认证** - 支持 URL、Header 或环境变量传递 API Key
+
+### 安装使用
+
+#### 方式1: NPX 直接运行（推荐）
+
+无需安装，直接配置 MCP 客户端：
+
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "command": "npx",
+      "args": ["-y", "weather-mcp-server"],
+      "env": {
+        "OPENWEATHER_API_KEY": "你的API密钥"
+      }
+    }
+  }
+}
+```
+
+#### 方式2: 全局安装
 
 ```bash
-npm start
+npm install -g weather-mcp-server
 ```
 
-## 开发模式
+然后配置：
 
-如果您想在开发模式下运行（自动重启）：
-
-```bash
-npm run dev
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "command": "weather-mcp",
+      "env": {
+        "OPENWEATHER_API_KEY": "你的API密钥"
+      }
+    }
+  }
+}
 ```
 
-## 使用
+#### 方式3: SSE 远程服务
 
-此 MCP 服务器通过 stdio 与客户端通信，当运行 `npm start` 后，服务器将等待来自 MCP 客户端的请求。
+如果已部署到服务器：
 
-## 工具详情
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "transport": "sse",
+      "url": "https://your-server.com/sse?key=你的API密钥"
+    }
+  }
+}
+```
 
-**get-weather**: 获取指定城市的当前天气
-- 参数: `city` - 城市名称（如：北京, Shanghai, 杭州）
-- 返回信息包括：
-  - 城市名称
-  - 当前温度（摄氏度）
-  - 体感温度
-  - 天气描述
-  - 湿度百分比
+### 可用工具
 
-## API 说明
+| 工具 | 描述 |
+|------|------|
+| `get-weather` | 获取城市实时天气 |
+| `get-forecast` | 获取5天天气预报 |
 
-本服务器使用 OpenWeatherMap 的 Current Weather Data API：
-- 基础 URL: `https://api.openweathermap.org/data/2.5`
-- 数据单位: 公制（metric）
-- 语言: 中文（zh_cn）
+### 使用示例
 
-## 协议
+向 AI 助手提问：
 
-遵循 Model Context Protocol 规范，使用 stdio 作为传输层。
+- "东京现在天气怎么样？"
+- "帮我查一下纽约未来5天的天气"
+- "北京今天热不热？"
+- "深圳明天会下雨吗？"
+
+### 获取 API Key
+
+前往 [OpenWeather](https://openweathermap.org/api) 免费注册获取。
+
+---
+
+## License
+
+MIT © Grande350
