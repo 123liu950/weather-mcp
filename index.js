@@ -7,85 +7,49 @@ const {
 } = require("@modelcontextprotocol/sdk/server/sse.js");
 const { z } = require("zod");
 const axios = require("axios");
-const express = require("express");
-const cors = require("cors");
+const http = require("http");
+const url = require("url");
 
 // ============ 配置 ============
 const DEFAULT_API_KEY =
   process.env.OPENWEATHER_API_KEY || "";
 const BASE_URL = "https://api.openweathermap.org/data/2.5";
-// 修复1: 使用 HTTPS 而不是 HTTP
 const GEO_URL = "https://api.openweathermap.org/geo/1.0/direct";
 
-// Session 存储 - 同时存储 server 实例以便传递 apiKey
+// Session 存储
 const sessions = new Map();
 
-// 双语工具描述
-const TOOL_DESCRIPTIONS = {
-  "get-weather": {
-    description:
-      "Get real-time weather for a specified city / 获取指定城市的实时天气",
-    cityParam:
-      "City name, e.g.: Beijing, Tokyo, London / 城市名，如：北京、东京、伦敦",
-  },
-  "get-forecast": {
-    description: "Get 5-day weather forecast for a city / 获取城市5天天气预报",
-    cityParam: "City name / 城市名",
-  },
-};
-
 // ============ 创建 MCP Server ============
-// 修复2: 将 apiKey 作为参数传入，避免 AsyncLocalStorage 上下文丢失问题
 function createServer(apiKeyGetter) {
   const server = new McpServer({
     name: "weather-mcp-server",
-    version: "2.1.0",
+    version: "2.3.0",
   });
 
-  // 工具 1: 获取当前天气
+  // 工具: 获取当前天气
   server.tool(
     "get-weather",
-    TOOL_DESCRIPTIONS["get-weather"].description,
-    {
-      city: z.string().describe(TOOL_DESCRIPTIONS["get-weather"].cityParam),
-    },
+    "Get real-time weather for a city / 获取城市实时天气",
+    { city: z.string().describe("City name, e.g.: Beijing, London / 城市名") },
     async ({ city }) => {
-      // 通过闭包获取 apiKey，而不是 AsyncLocalStorage
       const apiKey = apiKeyGetter();
-      console.error(
-        `[Tool] get-weather | City: ${city} | Key: ${apiKey.substring(0, 6)}***`
-      );
+      console.error(`[Tool] get-weather | City: ${city}`);
 
       try {
-        // 地理编码
-        console.error(`[Debug] Calling GEO API: ${GEO_URL}`);
         const geoRes = await axios.get(GEO_URL, {
           params: { q: city, limit: 1, appid: apiKey },
           timeout: 10000,
         });
 
-        console.error(
-          `[Debug] GEO response status: ${geoRes.status}, data length: ${geoRes.data?.length}`
-        );
-
         if (!geoRes.data?.length) {
           return {
             isError: true,
-            content: [
-              {
-                type: "text",
-                text: `City not found: "${city}" / 找不到城市: "${city}"，请检查拼写`,
-              },
-            ],
+            content: [{ type: "text", text: `City not found: "${city}"` }],
           };
         }
 
         const { lat, lon, name, local_names, country } = geoRes.data[0];
-        console.error(
-          `[Debug] Found city: ${name} (${country}) at ${lat}, ${lon}`
-        );
 
-        // 获取天气
         const weatherRes = await axios.get(`${BASE_URL}/weather`, {
           params: { lat, lon, appid: apiKey, units: "metric", lang: "zh_cn" },
           timeout: 10000,
@@ -103,13 +67,12 @@ function createServer(apiKeyGetter) {
                   location: { name: displayName, country, lat, lon },
                   weather: {
                     description: d.weather[0].description,
-                    temperature: { value: d.main.temp, unit: "°C" },
-                    feels_like: { value: d.main.feels_like, unit: "°C" },
-                    humidity: { value: d.main.humidity, unit: "%" },
-                    wind: { speed: d.wind.speed, unit: "m/s" },
-                    pressure: { value: d.main.pressure, unit: "hPa" },
+                    temperature: `${d.main.temp}°C`,
+                    feels_like: `${d.main.feels_like}°C`,
+                    humidity: `${d.main.humidity}%`,
+                    wind_speed: `${d.wind.speed} m/s`,
                   },
-                  summary: `${displayName} (${country}): ${d.weather[0].description}, ${d.main.temp}°C, Humidity ${d.main.humidity}%`,
+                  summary: `${displayName}: ${d.weather[0].description}, ${d.main.temp}°C`,
                 },
                 null,
                 2
@@ -118,36 +81,22 @@ function createServer(apiKeyGetter) {
           ],
         };
       } catch (error) {
-        // 增强错误日志
-        console.error(`[Error] get-weather failed:`, error.message);
-        if (error.response) {
-          console.error(`[Error] Response status: ${error.response.status}`);
-          console.error(`[Error] Response data:`, error.response.data);
-        }
-        const errMsg = error.response?.data?.message || error.message;
+        console.error(`[Error] get-weather:`, error.message);
         return {
           isError: true,
-          content: [
-            { type: "text", text: `Query failed / 查询失败: ${errMsg}` },
-          ],
+          content: [{ type: "text", text: `Query failed: ${error.message}` }],
         };
       }
     }
   );
 
-  // 工具 2: 获取天气预报
+  // 工具: 获取天气预报
   server.tool(
     "get-forecast",
-    TOOL_DESCRIPTIONS["get-forecast"].description,
+    "Get 5-day weather forecast / 获取5天天气预报",
     {
-      city: z.string().describe(TOOL_DESCRIPTIONS["get-forecast"].cityParam),
-      days: z
-        .number()
-        .min(1)
-        .max(5)
-        .default(3)
-        .optional()
-        .describe("Number of days (1-5) / 天数 (1-5)"),
+      city: z.string().describe("City name / 城市名"),
+      days: z.number().min(1).max(5).default(3).optional(),
     },
     async ({ city, days = 3 }) => {
       const apiKey = apiKeyGetter();
@@ -214,11 +163,11 @@ function createServer(apiKeyGetter) {
           ],
         };
       } catch (error) {
-        console.error(`[Error] get-forecast failed:`, error.message);
+        console.error(`[Error] get-forecast:`, error.message);
         return {
           isError: true,
           content: [
-            { type: "text", text: `Forecast query failed: ${error.message}` },
+            { type: "text", text: `Forecast failed: ${error.message}` },
           ],
         };
       }
@@ -228,37 +177,30 @@ function createServer(apiKeyGetter) {
   return server;
 }
 
-// ============ Express 中间件 ============
-function setupMiddleware(app) {
-  app.use(
-    cors({
-      origin: "*",
-      methods: ["GET", "POST", "OPTIONS"],
-      allowedHeaders: [
-        "Content-Type",
-        "Authorization",
-        "X-API-Key",
-        "Mcp-Session-Id",
-      ],
-      exposedHeaders: ["Mcp-Session-Id"],
-    })
-  );
-
-  app.use(express.json());
-
-  app.use((req, res, next) => {
-    console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-    next();
-  });
-}
-
+// ============ 辅助函数 ============
 function extractApiKey(req) {
+  const parsedUrl = url.parse(req.url, true);
   return (
     req.headers["x-api-key"] ||
     req.headers["authorization"]?.replace("Bearer ", "") ||
-    req.query.key ||
+    parsedUrl.query.key ||
     null
   );
+}
+
+function setCorsHeaders(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-API-Key, Mcp-Session-Id"
+  );
+  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+}
+
+function sendJson(res, statusCode, data) {
+  res.writeHead(statusCode, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(data));
 }
 
 // ============ 主启动逻辑 ============
@@ -266,191 +208,195 @@ async function main() {
   const mode = process.argv[2] || "stdio";
 
   if (mode === "sse") {
-    const app = express();
-    setupMiddleware(app);
+    // 使用原生 http 模块，避免 Express 中间件问题
+    const server = http.createServer(async (req, res) => {
+      const parsedUrl = url.parse(req.url, true);
+      const pathname = parsedUrl.pathname;
 
-    // -------- 健康检查 --------
-    app.get("/health", (req, res) => {
-      res.json({
-        status: "ok",
-        version: "2.1.0",
-        transport: "SSE",
-        activeSessions: sessions.size,
-        uptime: process.uptime(),
-      });
-    });
+      console.error(`[${new Date().toISOString()}] ${req.method} ${pathname}`);
 
-    // -------- API Key 测试端点 --------
-    app.get("/test-api", async (req, res) => {
-      const apiKey = extractApiKey(req) || DEFAULT_API_KEY;
-      try {
-        const geoRes = await axios.get(GEO_URL, {
-          params: { q: "London", limit: 1, appid: apiKey },
-          timeout: 10000,
-        });
-        res.json({
+      // 设置 CORS
+      setCorsHeaders(res);
+
+      // 处理 OPTIONS 预检请求
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+
+      // -------- 健康检查 --------
+      if (pathname === "/health" && req.method === "GET") {
+        return sendJson(res, 200, {
           status: "ok",
-          keyUsed: apiKey.substring(0, 6) + "***",
-          testCity: "London",
-          found: geoRes.data?.length > 0,
-          data: geoRes.data?.[0],
-        });
-      } catch (error) {
-        res.status(500).json({
-          status: "error",
-          keyUsed: apiKey.substring(0, 6) + "***",
-          error: error.response?.data || error.message,
-        });
-      }
-    });
-
-    // -------- 工具发现端点 --------
-    app.get("/tools", (req, res) => {
-      res.json({
-        tools: [
-          {
-            name: "get-weather",
-            description: TOOL_DESCRIPTIONS["get-weather"].description,
-            parameters: { city: "string (required)" },
-          },
-          {
-            name: "get-forecast",
-            description: TOOL_DESCRIPTIONS["get-forecast"].description,
-            parameters: {
-              city: "string (required)",
-              days: "number (1-5, optional)",
-            },
-          },
-        ],
-        usage: {
-          sse_endpoint: "/sse",
-          with_custom_key: "/sse?key=YOUR_KEY",
-          header_auth: "X-API-Key: YOUR_KEY",
-        },
-      });
-    });
-
-    // -------- SSE 连接端点 --------
-    app.get("/sse", async (req, res) => {
-      const userKey = extractApiKey(req);
-      const effectiveKey = userKey || DEFAULT_API_KEY;
-
-      console.error(
-        `[SSE] New connection | Key: ${effectiveKey.substring(0, 6)}***`
-      );
-
-      const transport = new SSEServerTransport("/messages", res);
-      const sessionId = transport.sessionId;
-
-      // 修复3: 在 session 中存储 effectiveKey，并通过闭包传递给 server
-      const session = {
-        transport,
-        apiKey: effectiveKey, // 直接存储，不依赖 AsyncLocalStorage
-        createdAt: new Date(),
-        lastActivity: new Date(),
-      };
-
-      sessions.set(sessionId, session);
-
-      // 创建 server，通过闭包获取当前 session 的 apiKey
-      const server = createServer(() => {
-        // 优先使用最新的 session apiKey（可能被 POST 请求更新）
-        return sessions.get(sessionId)?.apiKey || DEFAULT_API_KEY;
-      });
-
-      session.server = server;
-
-      console.error(`[SSE] Session created: ${sessionId}`);
-
-      res.on("close", () => {
-        sessions.delete(sessionId);
-        console.error(`[SSE] Session closed: ${sessionId}`);
-      });
-
-      await server.connect(transport);
-    });
-
-    // -------- 消息处理端点 --------
-    app.post("/messages", async (req, res) => {
-      const sessionId = req.query.sessionId;
-
-      if (!sessionId) {
-        return res.status(400).json({
-          error: "Missing sessionId",
-          hint: "SessionId should be provided as query parameter",
+          version: "2.3.0",
+          transport: "SSE (native http)",
+          activeSessions: sessions.size,
+          uptime: process.uptime(),
         });
       }
 
-      const session = sessions.get(sessionId);
-
-      if (!session) {
-        return res.status(404).json({
-          error: "Session not found",
-          hint: "Session may have expired. Please reconnect to /sse",
+      // -------- 调试端点 --------
+      if (pathname === "/debug" && req.method === "GET") {
+        const sessionsInfo = [];
+        for (const [id, session] of sessions) {
+          sessionsInfo.push({
+            id,
+            apiKeyPrefix: session.apiKey?.substring(0, 6) + "***",
+            createdAt: session.createdAt,
+          });
+        }
+        return sendJson(res, 200, {
+          activeSessions: sessions.size,
+          sessions: sessionsInfo,
         });
       }
 
-      session.lastActivity = new Date();
-
-      // 支持在 POST 请求中覆盖 Key
-      const requestKey = extractApiKey(req);
-      if (requestKey) {
-        session.apiKey = requestKey;
-        console.error(`[SSE] Session ${sessionId} apiKey updated`);
+      // -------- 工具列表 --------
+      if (pathname === "/tools" && req.method === "GET") {
+        return sendJson(res, 200, {
+          tools: ["get-weather", "get-forecast"],
+          usage: "Connect via SSE at /sse",
+        });
       }
 
-      try {
-        await session.transport.handlePostMessage(req, res);
-      } catch (error) {
-        console.error(`[SSE] Message handling error: ${error.message}`);
-        if (!res.headersSent) {
-          res.status(500).json({ error: "Internal server error" });
+      // -------- API 测试 --------
+      if (pathname === "/test-api" && req.method === "GET") {
+        const apiKey = extractApiKey(req) || DEFAULT_API_KEY;
+        try {
+          const geoRes = await axios.get(GEO_URL, {
+            params: { q: "London", limit: 1, appid: apiKey },
+            timeout: 10000,
+          });
+          return sendJson(res, 200, {
+            status: "ok",
+            keyUsed: apiKey.substring(0, 6) + "***",
+            found: geoRes.data?.length > 0,
+          });
+        } catch (error) {
+          return sendJson(res, 500, {
+            status: "error",
+            error: error.response?.data || error.message,
+          });
         }
       }
+
+      // -------- SSE 连接端点 --------
+      if (pathname === "/sse" && req.method === "GET") {
+        const userKey = extractApiKey(req);
+        const effectiveKey = userKey || DEFAULT_API_KEY;
+
+        console.error(
+          `[SSE] New connection | Key: ${effectiveKey.substring(0, 6)}***`
+        );
+
+        // 创建 transport
+        const transport = new SSEServerTransport("/messages", res);
+        const sessionId = transport.sessionId;
+
+        // 创建 server
+        const mcpServer = createServer(() => {
+          return sessions.get(sessionId)?.apiKey || DEFAULT_API_KEY;
+        });
+
+        // 存储 session
+        sessions.set(sessionId, {
+          transport,
+          server: mcpServer,
+          apiKey: effectiveKey,
+          createdAt: new Date(),
+        });
+
+        console.error(`[SSE] Session created: ${sessionId}`);
+
+        // 监听连接关闭
+        res.on("close", () => {
+          sessions.delete(sessionId);
+          console.error(`[SSE] Session closed: ${sessionId}`);
+        });
+
+        // 连接
+        await mcpServer.connect(transport);
+        return;
+      }
+
+      // -------- 消息处理端点 --------
+      if (pathname === "/messages" && req.method === "POST") {
+        const sessionId = parsedUrl.query.sessionId;
+        console.error(`[Messages] POST | sessionId: ${sessionId}`);
+
+        if (!sessionId) {
+          return sendJson(res, 400, { error: "Missing sessionId" });
+        }
+
+        const session = sessions.get(sessionId);
+        if (!session) {
+          console.error(
+            `[Messages] Session not found. Active: ${Array.from(
+              sessions.keys()
+            ).join(", ")}`
+          );
+          return sendJson(res, 404, { error: "Session not found" });
+        }
+
+        try {
+          // 关键：直接传递原始 req, res，不做任何预处理
+          await session.transport.handlePostMessage(req, res);
+        } catch (error) {
+          console.error(`[Messages] Error: ${error.message}`);
+          if (!res.writableEnded) {
+            sendJson(res, 500, { error: error.message });
+          }
+        }
+        return;
+      }
+
+      // -------- 404 --------
+      sendJson(res, 404, { error: "Not found" });
     });
 
-    // Session 清理
+    // Session 清理定时器
     setInterval(() => {
       const now = Date.now();
       const timeout = 30 * 60 * 1000;
-
       for (const [id, session] of sessions) {
-        if (now - session.lastActivity.getTime() > timeout) {
+        if (now - session.createdAt.getTime() > timeout) {
           sessions.delete(id);
-          console.error(`[Cleanup] Expired session removed: ${id}`);
+          console.error(`[Cleanup] Expired session: ${id}`);
         }
       }
     }, 5 * 60 * 1000);
 
     const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.error(`
 ╔═══════════════════════════════════════════════════════╗
-║           Weather MCP Server v2.1.0                   ║
+║           Weather MCP Server v2.3.0                   ║
 ╠═══════════════════════════════════════════════════════╣
-║  Transport: SSE                                       ║
+║  Transport: SSE (native http - no Express)            ║
 ║  Port: ${PORT}                                            ║
 ╠═══════════════════════════════════════════════════════╣
 ║  Endpoints:                                           ║
 ║    GET  /health     - Health check                    ║
+║    GET  /debug      - Debug info                      ║
 ║    GET  /test-api   - Test API key                    ║
-║    GET  /tools      - List available tools            ║
+║    GET  /tools      - List tools                      ║
 ║    GET  /sse        - SSE connection                  ║
 ║    POST /messages   - Message handler                 ║
 ╚═══════════════════════════════════════════════════════╝
       `);
     });
   } else {
-    // STDIO 模式 - 直接使用默认 Key
-    console.error("[STDIO] Starting in STDIO mode...");
+    // STDIO 模式
+    console.error("[STDIO] Starting...");
     const server = createServer(() => DEFAULT_API_KEY);
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("[STDIO] MCP Server connected");
+    console.error("[STDIO] Connected");
   }
 }
 
 main().catch((error) => {
-  console.error("[Fatal] Startup failed:", error);
+  console.error("[Fatal]", error);
   process.exit(1);
 });
