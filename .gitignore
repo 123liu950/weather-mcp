@@ -31,3 +31,9 @@ dist/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# 忽略所有 SSH 密钥文件
+*.ssh
+id_rsa*
+!id_rsa*.pub  # 可选：如果需要追踪公钥（不建议），否则直接删这行
+github-ssh*
